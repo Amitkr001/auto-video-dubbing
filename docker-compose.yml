@@ -1,0 +1,75 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+      - TEMP_DIR=/app/temp
+      - WHISPER_MODEL=base
+      - M2M100_MODEL=facebook/m2m100_418M
+      - PYANNOTE_AUTH_TOKEN=${PYANNOTE_AUTH_TOKEN:-}
+    volumes:
+      - uploads:/app/uploads
+      - outputs:/app/outputs
+      - temp:/app/temp
+      - models:/app/models
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+      - TEMP_DIR=/app/temp
+      - WHISPER_MODEL=base
+      - M2M100_MODEL=facebook/m2m100_418M
+      - PYANNOTE_AUTH_TOKEN=${PYANNOTE_AUTH_TOKEN:-}
+      - WAV2LIP_CHECKPOINT=/app/models/wav2lip.pth
+    volumes:
+      - uploads:/app/uploads
+      - outputs:/app/outputs
+      - temp:/app/temp
+      - models:/app/models
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  redis_data:
+  uploads:
+  outputs:
+  temp:
+  models:
