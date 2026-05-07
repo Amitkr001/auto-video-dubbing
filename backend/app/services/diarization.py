@@ -33,7 +33,13 @@ def diarize(vocals_path: str) -> list[dict]:
         pipeline = _get_pipeline()
 
         logger.info(f"Running diarization on {vocals_path}")
-        diarization = pipeline(vocals_path)
+        result = pipeline(vocals_path)
+
+        # pyannote 4.x returns DiarizeOutput; extract the Annotation
+        if hasattr(result, "speaker_diarization"):
+            diarization = result.speaker_diarization
+        else:
+            diarization = result
 
         segments = []
         for turn, _, speaker in diarization.itertracks(yield_label=True):
