@@ -1,0 +1,36 @@
+# FastAPI & server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Redis
+redis==5.2.1
+
+# Audio/Video processing
+ffmpeg-python==0.2.0
+demucs==4.0.1
+
+# Speaker diarization
+pyannote.audio==3.3.2
+
+# Speech-to-text
+openai-whisper==20240930
+
+# Translation
+transformers==4.47.1
+sentencepiece==0.2.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# TTS
+TTS==0.22.0
+
+# Audio analysis
+librosa==0.10.2.post1
+numpy>=1.24.0
+scipy>=1.11.0
+soundfile==0.12.1
+
+# Utilities
+pydantic==2.10.4
+python-dotenv==1.0.1
