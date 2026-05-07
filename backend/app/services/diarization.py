@@ -17,7 +17,7 @@ def _get_pipeline():
         logger.info("Loading pyannote diarization pipeline...")
         _diarization_pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=PYANNOTE_AUTH_TOKEN or None,
+            token=PYANNOTE_AUTH_TOKEN or None,
         )
         logger.info("Diarization pipeline loaded")
     return _diarization_pipeline
