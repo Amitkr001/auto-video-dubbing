@@ -12,9 +12,10 @@ def _get_tts():
     global _tts_engine
     if _tts_engine is None:
         from TTS.api import TTS
+        from app.config import COQUI_TTS_MODEL
 
-        logger.info("Loading Coqui TTS engine...")
-        _tts_engine = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2")
+        logger.info(f"Loading Coqui TTS engine: {COQUI_TTS_MODEL}...")
+        _tts_engine = TTS(model_name=COQUI_TTS_MODEL)
         logger.info("Coqui TTS engine loaded")
     return _tts_engine
 
@@ -44,18 +45,58 @@ def generate_speech(
         f"lang={target_language}"
     )
 
-    tts.tts_to_file(
-        text=text,
-        file_path=output_path,
-        speaker_wav=speaker_wav,
-        language=target_language,
-    )
+    is_multi_speaker = tts.is_multi_speaker if hasattr(tts, "is_multi_speaker") else False
+    is_multi_lingual = tts.is_multi_lingual if hasattr(tts, "is_multi_lingual") else False
+
+    tts_kwargs: dict = {"text": text, "file_path": output_path}
+    if is_multi_lingual:
+        tts_lang = _resolve_tts_language(tts, target_language)
+        tts_kwargs["language"] = tts_lang
+    if is_multi_speaker and speaker_wav:
+        tts_kwargs["speaker_wav"] = speaker_wav
+    elif is_multi_speaker and hasattr(tts, "speakers") and tts.speakers:
+        tts_kwargs["speaker"] = tts.speakers[0]
+
+    tts.tts_to_file(**tts_kwargs)
 
     if target_duration and target_duration > 0:
         output_path = _adjust_duration(output_path, target_duration)
 
     logger.info(f"TTS audio generated: {output_path}")
     return output_path
+
+
+def _resolve_tts_language(tts, target_language: str) -> str:
+    """
+    Resolve a standard language code to the TTS model's expected format.
+    Some models use codes like 'fr-fr' instead of 'fr'.
+    Falls back to English if the target language is not supported.
+    """
+    if hasattr(tts, "languages") and tts.languages:
+        available = list(tts.languages)
+        if target_language in available:
+            return target_language
+
+        for lang in available:
+            if lang.startswith(target_language):
+                logger.info(f"Mapped language '{target_language}' -> '{lang}'")
+                return lang
+
+        for lang in available:
+            if target_language.startswith(lang.split("-")[0]):
+                logger.info(f"Mapped language '{target_language}' -> '{lang}'")
+                return lang
+
+        logger.warning(
+            f"Language '{target_language}' not supported by TTS model. "
+            f"Available: {available}. Falling back to 'en'."
+        )
+        for lang in available:
+            if lang.startswith("en"):
+                return lang
+        return available[0]
+
+    return target_language
 
 
 def _get_default_speaker(gender: str) -> str | None:

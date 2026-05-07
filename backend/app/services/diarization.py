@@ -27,22 +27,93 @@ def diarize(vocals_path: str) -> list[dict]:
     """
     Run speaker diarization on the vocal track.
     Returns list of segments with speaker_id, start, end times.
+    Falls back to librosa VAD if pyannote is unavailable.
     """
-    pipeline = _get_pipeline()
+    try:
+        pipeline = _get_pipeline()
 
-    logger.info(f"Running diarization on {vocals_path}")
-    diarization = pipeline(vocals_path)
+        logger.info(f"Running diarization on {vocals_path}")
+        diarization = pipeline(vocals_path)
+
+        segments = []
+        for turn, _, speaker in diarization.itertracks(yield_label=True):
+            segments.append({
+                "speaker_id": speaker,
+                "start": round(turn.start, 3),
+                "end": round(turn.end, 3),
+            })
+
+        segments = _merge_adjacent_segments(segments)
+        logger.info(f"Diarization complete: {len(segments)} segments found")
+        return segments
+
+    except Exception as e:
+        logger.warning(
+            f"pyannote diarization failed: {e}. "
+            "Falling back to energy-based VAD segmentation."
+        )
+        return _fallback_vad_segmentation(vocals_path)
+
+
+def _fallback_vad_segmentation(vocals_path: str) -> list[dict]:
+    """
+    Fallback segmentation using librosa energy-based voice activity detection.
+    Splits audio into speech segments based on energy thresholds.
+    Assigns all segments to a single speaker (SPEAKER_00).
+    """
+    import librosa
+
+    y, sr = librosa.load(vocals_path, sr=16000)
+    duration = len(y) / sr
+
+    if duration < 0.5:
+        return [{"speaker_id": "SPEAKER_00", "start": 0.0, "end": round(duration, 3)}]
+
+    frame_length = int(0.025 * sr)
+    hop_length = int(0.010 * sr)
+
+    energy = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
+
+    threshold = float(np.mean(energy) * 0.5)
+    if threshold < 1e-5:
+        threshold = 1e-5
+
+    is_speech = energy > threshold
 
     segments = []
-    for turn, _, speaker in diarization.itertracks(yield_label=True):
-        segments.append({
-            "speaker_id": speaker,
-            "start": round(turn.start, 3),
-            "end": round(turn.end, 3),
-        })
+    in_speech = False
+    start_frame = 0
+
+    for i, val in enumerate(is_speech):
+        if val and not in_speech:
+            in_speech = True
+            start_frame = i
+        elif not val and in_speech:
+            in_speech = False
+            start_time = round(start_frame * hop_length / sr, 3)
+            end_time = round(i * hop_length / sr, 3)
+            if end_time - start_time >= 0.3:
+                segments.append({
+                    "speaker_id": "SPEAKER_00",
+                    "start": start_time,
+                    "end": end_time,
+                })
+
+    if in_speech:
+        start_time = round(start_frame * hop_length / sr, 3)
+        end_time = round(duration, 3)
+        if end_time - start_time >= 0.3:
+            segments.append({
+                "speaker_id": "SPEAKER_00",
+                "start": start_time,
+                "end": end_time,
+            })
+
+    if not segments:
+        segments = [{"speaker_id": "SPEAKER_00", "start": 0.0, "end": round(duration, 3)}]
 
     segments = _merge_adjacent_segments(segments)
-    logger.info(f"Diarization complete: {len(segments)} segments found")
+    logger.info(f"VAD fallback: {len(segments)} segments found")
     return segments
 
 
